@@ -5,6 +5,17 @@ from boto3.dynamodb.conditions import Attr, Key
 from functools import reduce
 
 
+def update_freq(tags, freq={}):
+  
+    for tag in tags:
+        if tag not in freq:
+            freq[tag] = 0
+
+        freq[tag] += 1
+
+    return freq
+
+
 class DynamoDBManager(BaseDataManager):
 
     """
@@ -51,15 +62,15 @@ class DynamoDBManager(BaseDataManager):
 
     # Private methods
 
-    def _search(self, search_terms, begins_with=None):
+    def _search(self, search_terms, begins_with=None, projection='_id'):
         """
         Returns a list of Archive id's in the table on Dynamo
 
         """
 
         kwargs = dict(
-            ProjectionExpression='#id',
-            ExpressionAttributeNames={"#id": "_id"})
+            ProjectionExpression='#projection',
+            ExpressionAttributeNames={"#projection": projection})
 
         if len(search_terms) > 0:
             kwargs['FilterExpression'] = reduce(
@@ -78,7 +89,7 @@ class DynamoDBManager(BaseDataManager):
         while True:
             res = self._table.scan(**kwargs)
             for r in res['Items']:
-                yield r['_id']
+                yield r[projection]
             if 'LastEvaluatedKey' in res:
                 kwargs['ExclusiveStartKey'] = res['LastEvaluatedKey']
             else:
@@ -289,3 +300,22 @@ class DynamoDBManager(BaseDataManager):
                 UpdateExpression="SET tags = :t",
                 ExpressionAttributeValues={':t': updated_tag_list},
                 ReturnValues='ALL_NEW')
+
+
+    def _list_tags(self, search_terms=None, begins_with=None):
+
+        if search_terms is None:
+            search_terms = []
+
+        tags = {}
+        for res in self._search(
+                search_terms=search_terms,
+                begins_with=begins_with,
+                projection='tags'):
+
+            tags = update_freq(res, tags)
+
+        return tags
+        
+
+
